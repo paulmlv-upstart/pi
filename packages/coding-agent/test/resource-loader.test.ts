@@ -329,19 +329,6 @@ Content`,
 			expect(loader.getSystemPrompt()).toBe("You are a helpful assistant.");
 		});
 
-		it("should prefer SYSTEM.md from cwd/.pi.user", async () => {
-			const piDir = join(cwd, ".pi");
-			const piUserDir = join(cwd, ".pi.user");
-			mkdirSync(piDir, { recursive: true });
-			mkdirSync(piUserDir, { recursive: true });
-			writeFileSync(join(piDir, "SYSTEM.md"), "Project system prompt.");
-			writeFileSync(join(piUserDir, "SYSTEM.md"), "Project user system prompt.");
-
-			const loader = new DefaultResourceLoader({ cwd, agentDir });
-			await loader.reload();
-
-			expect(loader.getSystemPrompt()).toBe("Project user system prompt.");
-		});
 
 		it("should skip .pi SYSTEM.md when project config is not trusted", async () => {
 			const piDir = join(cwd, ".pi");

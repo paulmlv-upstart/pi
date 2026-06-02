@@ -258,43 +258,15 @@ describe("SettingsManager", () => {
 		});
 	});
 
-	describe("project user settings", () => {
-		it("should let .pi.user override .pi and global settings", () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ theme: "global" }));
-			writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ theme: "project" }));
-			mkdirSync(join(projectDir, ".pi.user"), { recursive: true });
-			writeFileSync(join(projectDir, ".pi.user", "settings.json"), JSON.stringify({ theme: "project-user" }));
-
-			const manager = SettingsManager.create(projectDir, agentDir);
-
-			expect(manager.getTheme()).toBe("project-user");
-			expect(manager.getProjectSettings().theme).toBe("project");
-			expect(manager.getProjectUserSettings().theme).toBe("project-user");
-		});
-
+	describe("project config trust", () => {
 		it("should skip project settings when project config is not trusted", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ theme: "global" }));
 			writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ theme: "project" }));
-			mkdirSync(join(projectDir, ".pi.user"), { recursive: true });
-			writeFileSync(join(projectDir, ".pi.user", "settings.json"), JSON.stringify({ theme: "project-user" }));
 
 			const manager = SettingsManager.create(projectDir, agentDir, { projectConfigTrusted: false });
 
 			expect(manager.getTheme()).toBe("global");
 			expect(manager.getProjectSettings()).toEqual({});
-			expect(manager.getProjectUserSettings()).toEqual({});
-			expect(manager.getProjectSettingsLayers()).toEqual([]);
-		});
-
-		it("should create ignored .pi.user folder when writing project user settings", async () => {
-			rmSync(join(projectDir, ".pi.user"), { recursive: true, force: true });
-			const manager = SettingsManager.create(projectDir, agentDir);
-
-			manager.setProjectUserPackages(["npm:test-pkg"]);
-			await manager.flush();
-
-			expect(existsSync(join(projectDir, ".pi.user", "settings.json"))).toBe(true);
-			expect(readFileSync(join(projectDir, ".pi.user", ".gitignore"), "utf-8")).toBe("*\n.*\n");
 		});
 	});
 

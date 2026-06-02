@@ -51,7 +51,7 @@ Type `/` in the editor to open command completion. Extensions can register custo
 | `/export [file]` | Export session to HTML |
 | `/share` | Upload as private GitHub gist with shareable HTML link |
 | `/reload` | Reload keybindings, extensions, skills, prompts, and context files |
-| `/trust [yes|no|reset]` | Configure whether `.pi` and `.pi.user` are trusted for this working directory |
+| `/trust [yes|no|reset]` | Configure whether `.pi` is trusted for this working directory |
 | `/hotkeys` | Show all keyboard shortcuts |
 | `/changelog` | Display version history |
 | `/quit` | Quit pi |
@@ -106,7 +106,6 @@ Use context files for project conventions, commands, safety rules, and preferenc
 
 Replace the default system prompt with:
 
-- `.pi.user/SYSTEM.md` for project-local user overrides
 - `.pi/SYSTEM.md` for a project
 - `~/.pi/agent/SYSTEM.md` globally
 
@@ -114,7 +113,7 @@ Append to the default prompt without replacing it with `APPEND_SYSTEM.md` in tho
 
 ### Project Trust
 
-Interactive startup asks before loading `.pi` or `.pi.user` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
+Interactive startup asks before loading `.pi` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
 
 ## Exporting and Sharing Sessions
 
@@ -133,9 +132,9 @@ pi [options] [@files...] [messages...]
 ### Package Commands
 
 ```bash
-pi install <source> [-l] [-u] # Install package, -l for project-local, -u for .pi.user with -l
-pi remove <source> [-l] [-u]  # Remove package
-pi uninstall <source> [-l] [-u] # Alias for remove
+pi install <source> [-l]     # Install package, -l for project-local
+pi remove <source> [-l]      # Remove package
+pi uninstall <source> [-l]   # Alias for remove
 pi update [source|self|pi]   # Update pi and packages; reconcile pinned git refs
 pi update --extensions       # Update packages only; reconcile pinned git refs
 pi update --self             # Update pi only
@@ -225,7 +224,7 @@ pi --no-extensions -e ./my-extension.ts
 | `--system-prompt <text>` | Replace default prompt; context files and skills are still appended |
 | `--append-system-prompt <text>` | Append to system prompt |
 | `--verbose` | Force verbose startup |
-| `-f`, `--force` | Force loading project `.pi` and `.pi.user` config regardless of trust |
+| `-f`, `--force` | Force loading project `.pi` config regardless of trust |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
 

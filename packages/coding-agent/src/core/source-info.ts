@@ -15,7 +15,7 @@ export function createSourceInfo(path: string, metadata: PathMetadata): SourceIn
 	return {
 		path,
 		source: metadata.source,
-		scope: metadata.scope === "projectUser" ? "project" : metadata.scope,
+		scope: metadata.scope,
 		origin: metadata.origin,
 		baseDir: metadata.baseDir,
 	};

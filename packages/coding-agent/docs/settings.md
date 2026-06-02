@@ -1,18 +1,17 @@
 # Settings
 
-Pi uses JSON settings files with project settings overriding global settings and `.pi.user` overriding shared project settings.
+Pi uses JSON settings files with project settings overriding global settings.
 
 | Location | Scope |
 |----------|-------|
 | `~/.pi/agent/settings.json` | Global (all projects) |
 | `.pi/settings.json` | Project (current directory) |
-| `.pi.user/settings.json` | Project-local user overrides (ignored by Git when Pi creates it) |
 
 Edit directly or use `/settings` for common options.
 
 ## Project Trust
 
-Interactive startup asks before loading `.pi` or `.pi.user` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
+Interactive startup asks before loading `.pi` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
 
 ## All Settings
 
@@ -198,7 +197,7 @@ When multiple sources specify a session directory, precedence is `--session-dir`
 
 These settings define where to load extensions, skills, prompts, and themes from.
 
-Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in `.pi/settings.json` resolve relative to `.pi`; paths in `.pi.user/settings.json` resolve relative to `.pi.user`. Absolute paths and `~` are supported.
+Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in `.pi/settings.json` resolve relative to `.pi`. Absolute paths and `~` are supported.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
@@ -264,7 +263,7 @@ See [packages.md](packages.md) for package management details.
 
 ## Project Overrides
 
-Project settings (`.pi/settings.json`) override global settings. Project-local user settings (`.pi.user/settings.json`) override both. Nested objects are merged:
+Project settings (`.pi/settings.json`) override global settings. Nested objects are merged:
 
 ```json
 // ~/.pi/agent/settings.json (global)
@@ -278,14 +277,9 @@ Project settings (`.pi/settings.json`) override global settings. Project-local u
   "compaction": { "reserveTokens": 8192 }
 }
 
-// .pi.user/settings.json (project-local user)
-{
-  "theme": "light"
-}
-
 // Result
 {
-  "theme": "light",
+  "theme": "dark",
   "compaction": { "enabled": true, "reserveTokens": 8192 }
 }
 ```

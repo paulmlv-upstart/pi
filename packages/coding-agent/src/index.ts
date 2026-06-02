@@ -152,15 +152,12 @@ export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts"
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
 export type {
-	InstalledSourceScope,
 	PackageManager,
 	PathMetadata,
 	ProgressCallback,
 	ProgressEvent,
 	ResolvedPaths,
 	ResolvedResource,
-	ResourceMetadataScope,
-	SettingsSourceScope,
 } from "./core/package-manager.ts";
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
@@ -220,8 +217,6 @@ export {
 	type CompactionSettings,
 	type ImageSettings,
 	type PackageSource,
-	type ProjectSettingsLayer,
-	type ProjectSettingsScope,
 	type RetrySettings,
 	SettingsManager,
 	type SettingsManagerCreateOptions,

@@ -508,7 +508,7 @@ interface ProjectTrustPromptResult {
 async function promptForProjectTrust(cwd: string, settingsManager: SettingsManager): Promise<ProjectTrustPromptResult> {
 	const selected = await showStartupSelector(
 		settingsManager,
-		`Trust project configuration?\nLoad .pi and .pi.user from ${cwd}?\nWarning: Project extensions can execute code.`,
+		`Trust project configuration?\nLoad .pi from ${cwd}?\nWarning: Project extensions can execute code.`,
 		[
 			{ label: "Yes (remember)", value: { trusted: true, remember: true } },
 			{ label: "Yes (this session)", value: { trusted: true, remember: false } },

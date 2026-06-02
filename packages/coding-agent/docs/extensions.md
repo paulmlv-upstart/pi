@@ -4,7 +4,7 @@
 
 Extensions are TypeScript modules that extend pi's behavior. They can subscribe to lifecycle events, register custom tools callable by the LLM, add commands, and more.
 
-> **Placement for /reload:** Put extensions in `~/.pi/agent/extensions/` (global), `.pi/extensions/` (project-local), or `.pi.user/extensions/` (project-local user) for auto-discovery. Use `pi -e ./path.ts` only for quick tests. Extensions in auto-discovered locations can be hot-reloaded with `/reload`.
+> **Placement for /reload:** Put extensions in `~/.pi/agent/extensions/` (global) or `.pi/extensions/` (project-local) for auto-discovery. Use `pi -e ./path.ts` only for quick tests. Extensions in auto-discovered locations can be hot-reloaded with `/reload`.
 
 **Key capabilities:**
 - **Custom tools** - Register tools the LLM can call via `pi.registerTool()`
@@ -117,8 +117,6 @@ Extensions are auto-discovered from:
 | `~/.pi/agent/extensions/*/index.ts` | Global (subdirectory) |
 | `.pi/extensions/*.ts` | Project-local |
 | `.pi/extensions/*/index.ts` | Project-local (subdirectory) |
-| `.pi.user/extensions/*.ts` | Project-local user |
-| `.pi.user/extensions/*/index.ts` | Project-local user (subdirectory) |
 
 Additional paths via `settings.json`:
 

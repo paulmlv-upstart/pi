@@ -38,7 +38,7 @@ pi update --extension npm:@foo/bar
 
 These commands manage pi packages, not the pi CLI installation. To uninstall pi itself, see [Quickstart](quickstart.md#uninstall).
 
-By default, `install` and `remove` write to user settings (`~/.pi/agent/settings.json`). Use `-l` to write to project settings (`.pi/settings.json`) instead. Use `-l -u` to write to ignored project-local user settings (`.pi.user/settings.json`). Project settings can be shared with your team, and pi installs any missing packages automatically on startup.
+By default, `install` and `remove` write to user settings (`~/.pi/agent/settings.json`). Use `-l` to write to project settings (`.pi/settings.json`) instead. Project settings can be shared with your team, and pi installs any missing packages automatically on startup.
 
 To try a package without installing it, use `--extension` or `-e`. This installs to a temporary directory for the current run only:
 
@@ -60,7 +60,7 @@ npm:pkg
 
 - Versioned specs are pinned and skipped by package updates (`pi update`, `pi update --extensions`).
 - User installs go under `~/.pi/agent/npm/`.
-- Project installs go under `.pi/npm/`; project-local user installs go under `.pi.user/npm/`.
+- Project installs go under `.pi/npm/`.
 - Set `npmCommand` in `settings.json` to pin npm package lookup and install operations to a specific wrapper command such as `mise` or `asdf`.
 
 Example:
@@ -87,7 +87,7 @@ ssh://git@github.com/user/repo@v1
 - For non-interactive runs (for example CI), you can set `GIT_TERMINAL_PROMPT=0` to disable credential prompts and set `GIT_SSH_COMMAND` (for example `ssh -o BatchMode=yes -o ConnectTimeout=5`) to fail fast.
 - Refs are pinned tags or commits. `pi update` and `pi update --extensions` do not move them to newer refs, but they do reconcile an existing clone to the configured ref.
 - Use `pi install git:host/user/repo@new-ref` to update settings and move an existing package to a new pinned ref.
-- Cloned to `~/.pi/agent/git/<host>/<path>` (global), `.pi/git/<host>/<path>` (project), or `.pi.user/git/<host>/<path>` (project-local user).
+- Cloned to `~/.pi/agent/git/<host>/<path>` (global) or `.pi/git/<host>/<path>` (project).
 - When reconciliation changes the checkout, pi resets and cleans the clone, then runs `npm install` if `package.json` exists.
 
 **SSH examples:**
@@ -219,7 +219,7 @@ Use `pi config` to enable or disable extensions, skills, prompt templates, and t
 
 ## Scope and Deduplication
 
-Packages can appear in global, project, and project-local user settings. If the same package appears in more than one scope, `.pi.user` wins over `.pi`, and project scopes win over global. Identity is determined by:
+Packages can appear in both global and project settings. If the same package appears in both, the project entry wins. Identity is determined by:
 
 - npm: package name
 - git: repository URL without ref

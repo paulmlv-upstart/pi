@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -43,15 +43,10 @@ describe("ProjectTrustStore", () => {
 		expect(readFileSync(trustPath, "utf-8")).toBe("{not json");
 	});
 
-	it("detects .pi and .pi.user project config directories", () => {
+	it("detects .pi project config directories", () => {
 		expect(hasProjectConfig(cwd)).toBe(false);
 
 		mkdirSync(join(cwd, ".pi"), { recursive: true });
 		expect(hasProjectConfig(cwd)).toBe(true);
-
-		rmSync(join(cwd, ".pi"), { recursive: true, force: true });
-		mkdirSync(join(cwd, ".pi.user"), { recursive: true });
-		expect(hasProjectConfig(cwd)).toBe(true);
-		expect(existsSync(join(cwd, ".pi.user"))).toBe(true);
 	});
 });

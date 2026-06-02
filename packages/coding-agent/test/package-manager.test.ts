@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { PassThrough } from "node:stream";
@@ -33,6 +33,10 @@ interface PackageManagerInternals {
 		options?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
 	): Promise<string>;
 	getLocalGitUpdateTarget(installedPath: string): Promise<{ ref: string; head: string; fetchArgs: string[] }>;
+	getGitInstallPath(
+		source: { type: "git"; repo: string; host: string; path: string; pinned: boolean; ref?: string },
+		scope: "user" | "project" | "temporary",
+	): string;
 }
 
 // Helper to check if a resource is enabled
@@ -154,38 +158,6 @@ Content`,
 
 			const result = await packageManager.resolve();
 			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
-		});
-
-		it("should resolve project user paths relative to .pi.user", async () => {
-			const extDir = join(tempDir, ".pi.user", "extensions");
-			mkdirSync(extDir, { recursive: true });
-			const extPath = join(extDir, "project-user-ext.ts");
-			writeFileSync(extPath, "export default function() {}");
-
-			settingsManager.setProjectUserExtensionPaths(["extensions/project-user-ext.ts"]);
-
-			const result = await packageManager.resolve();
-			const ext = result.extensions.find((r) => r.path === extPath);
-			expect(ext?.enabled).toBe(true);
-			expect(ext?.metadata.scope).toBe("projectUser");
-		});
-
-		it("should prefer .pi.user resources over .pi resources", async () => {
-			const projectExtDir = join(tempDir, ".pi", "extensions");
-			const projectUserExtDir = join(tempDir, ".pi.user", "extensions");
-			mkdirSync(projectExtDir, { recursive: true });
-			mkdirSync(projectUserExtDir, { recursive: true });
-			const projectExtPath = join(projectExtDir, "shared.ts");
-			const projectUserExtPath = join(projectUserExtDir, "shared.ts");
-			writeFileSync(projectExtPath, "export default function() {}");
-			writeFileSync(projectUserExtPath, "export default function() {}");
-
-			const result = await packageManager.resolve();
-			const sharedPaths = result.extensions.filter((r) => r.path.endsWith("shared.ts"));
-
-			expect(sharedPaths).toHaveLength(2);
-			expect(sharedPaths[0].path).toBe(projectUserExtPath);
-			expect(sharedPaths[1].path).toBe(projectExtPath);
 		});
 
 		it("should auto-discover user prompts with overrides", async () => {
@@ -740,21 +712,6 @@ Content`,
 			);
 		});
 
-		it("should create ignored .pi.user folder for project user npm installs", async () => {
-			expect(existsSync(join(tempDir, ".pi.user"))).toBe(false);
-			const managerWithInternals = packageManager as unknown as PackageManagerInternals;
-			const runCommandSpy = vi.spyOn(managerWithInternals, "runCommand").mockResolvedValue(undefined);
-
-			await packageManager.install("npm:@scope/pkg", { local: true, localUser: true });
-
-			expect(readFileSync(join(tempDir, ".pi.user", ".gitignore"), "utf-8")).toBe("*\n.*\n");
-			expect(runCommandSpy).toHaveBeenCalledWith(
-				"npm",
-				["install", "@scope/pkg", "--prefix", join(tempDir, ".pi.user", "npm"), "--legacy-peer-deps"],
-				undefined,
-			);
-		});
-
 		it("should use bun --cwd for npm package installs", async () => {
 			settingsManager = SettingsManager.inMemory({
 				npmCommand: ["mise", "exec", "bun@1", "--", "bun"],
@@ -1185,6 +1142,25 @@ Content`,
 		});
 	});
 
+	describe("git install paths", () => {
+		it("should reject paths outside git install roots", () => {
+			const managerWithInternals = packageManager as unknown as PackageManagerInternals;
+			const traversalSource = {
+				type: "git" as const,
+				repo: "git@evil.example:../../victim/repo",
+				host: "evil.example",
+				path: "../../victim/repo",
+				pinned: false,
+			};
+
+			for (const scope of ["user", "project", "temporary"] as const) {
+				expect(() => managerWithInternals.getGitInstallPath(traversalSource, scope)).toThrow(
+					"outside package install root",
+				);
+			}
+		});
+	});
+
 	describe("settings source normalization", () => {
 		it("should store global local packages relative to agent settings base", () => {
 			const pkgDir = join(tempDir, "packages", "local-global-pkg");
@@ -1210,23 +1186,6 @@ Content`,
 
 			const settings = settingsManager.getProjectSettings();
 			const rel = relative(join(tempDir, ".pi"), projectPkgDir);
-			const expected = rel.startsWith(".") ? rel : `./${rel}`;
-			expect(settings.packages?.[0]).toBe(expected);
-		});
-
-		it("should store project user local packages relative to .pi.user settings base", () => {
-			const projectPkgDir = join(tempDir, "project-user-local-pkg");
-			mkdirSync(join(projectPkgDir, "extensions"), { recursive: true });
-			writeFileSync(join(projectPkgDir, "extensions", "index.ts"), "export default function() {}");
-
-			const added = packageManager.addSourceToSettings("./project-user-local-pkg", {
-				local: true,
-				localUser: true,
-			});
-			expect(added).toBe(true);
-
-			const settings = settingsManager.getProjectUserSettings();
-			const rel = relative(join(tempDir, ".pi.user"), projectPkgDir);
 			const expected = rel.startsWith(".") ? rel : `./${rel}`;
 			expect(settings.packages?.[0]).toBe(expected);
 		});

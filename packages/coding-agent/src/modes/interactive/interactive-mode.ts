@@ -4954,7 +4954,7 @@ export class InteractiveMode {
 		const cwd = this.sessionManager.getCwd();
 		const current = this.formatTrustDecision(trustStore.get(cwd));
 		const choice = await this.showExtensionSelector(
-			`Trust project configuration?\nCurrent setting: ${current}\nLoad .pi and .pi.user from ${cwd}?\nWarning: Project extensions can execute code.`,
+			`Trust project configuration?\nCurrent setting: ${current}\nLoad .pi from ${cwd}?\nWarning: Project extensions can execute code.`,
 			["Yes (remember)", "Yes (this session)", "No (remember)", "No (this session)"],
 		);
 		if (choice === "Yes (remember)") {

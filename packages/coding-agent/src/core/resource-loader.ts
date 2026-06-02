@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import chalk from "chalk";
-import { CONFIG_DIR_NAME, PROJECT_USER_CONFIG_DIR_NAME } from "../config.ts";
+import { CONFIG_DIR_NAME } from "../config.ts";
 import { loadThemeFromPath, type Theme } from "../modes/interactive/theme/theme.ts";
 import type { ResourceDiagnostic } from "./diagnostics.ts";
 
@@ -652,10 +652,6 @@ export class DefaultResourceLoader implements ResourceLoader {
 			join(this.agentDir, "extensions"),
 		];
 		const projectRoots = [
-			join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "skills"),
-			join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "prompts"),
-			join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "themes"),
-			join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "extensions"),
 			join(this.cwd, CONFIG_DIR_NAME, "skills"),
 			join(this.cwd, CONFIG_DIR_NAME, "prompts"),
 			join(this.cwd, CONFIG_DIR_NAME, "themes"),
@@ -858,13 +854,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	private discoverSystemPromptFile(): string | undefined {
-		const projectPaths = this.settingsManager.isProjectConfigTrusted()
-			? [join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "SYSTEM.md"), join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md")]
-			: [];
-		for (const projectPath of projectPaths) {
-			if (existsSync(projectPath)) {
-				return projectPath;
-			}
+		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
+		if (this.settingsManager.isProjectConfigTrusted() && existsSync(projectPath)) {
+			return projectPath;
 		}
 
 		const globalPath = join(this.agentDir, "SYSTEM.md");
@@ -876,16 +868,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	private discoverAppendSystemPromptFile(): string | undefined {
-		const projectPaths = this.settingsManager.isProjectConfigTrusted()
-			? [
-					join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME, "APPEND_SYSTEM.md"),
-					join(this.cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md"),
-				]
-			: [];
-		for (const projectPath of projectPaths) {
-			if (existsSync(projectPath)) {
-				return projectPath;
-			}
+		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
+		if (this.settingsManager.isProjectConfigTrusted() && existsSync(projectPath)) {
+			return projectPath;
 		}
 
 		const globalPath = join(this.agentDir, "APPEND_SYSTEM.md");

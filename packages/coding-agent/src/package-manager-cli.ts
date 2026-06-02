@@ -48,7 +48,6 @@ interface PackageCommandOptions {
 	source?: string;
 	updateTarget?: UpdateTarget;
 	local: boolean;
-	localUser: boolean;
 	force: boolean;
 	help: boolean;
 	invalidOption?: string;
@@ -75,9 +74,9 @@ function reportSettingsErrors(settingsManager: SettingsManager, context: string)
 function getPackageCommandUsage(command: PackageCommand): string {
 	switch (command) {
 		case "install":
-			return `${APP_NAME} install <source> [-l] [-u]`;
+			return `${APP_NAME} install <source> [-l]`;
 		case "remove":
-			return `${APP_NAME} remove <source> [-l] [-u]`;
+			return `${APP_NAME} remove <source> [-l]`;
 		case "update":
 			return `${APP_NAME} update [source|self|pi] [--self] [--extensions] [--extension <source>] [--force]`;
 		case "list":
@@ -95,7 +94,6 @@ Install a package and add it to settings.
 
 Options:
   -l, --local    Install project-locally (.pi/settings.json)
-  -u, --user     With --local, write to .pi.user/settings.json instead
   -f, --force    Trust project config for this command
 
 Examples:
@@ -113,11 +111,10 @@ Examples:
   ${getPackageCommandUsage("remove")}
 
 Remove a package and its source from settings.
-Alias: ${APP_NAME} uninstall <source> [-l] [-u]
+Alias: ${APP_NAME} uninstall <source> [-l]
 
 Options:
   -l, --local    Remove from project settings (.pi/settings.json)
-  -u, --user     With --local, remove from .pi.user/settings.json instead
   -f, --force    Trust project config for this command
 
 Examples:
@@ -171,7 +168,6 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 	}
 
 	let local = false;
-	let localUser = false;
 	let force = false;
 	let help = false;
 	let invalidOption: string | undefined;
@@ -193,15 +189,6 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 		if (arg === "-l" || arg === "--local") {
 			if (command === "install" || command === "remove") {
 				local = true;
-			} else {
-				invalidOption = invalidOption ?? arg;
-			}
-			continue;
-		}
-
-		if (arg === "-u" || arg === "--user") {
-			if (command === "install" || command === "remove") {
-				localUser = true;
 			} else {
 				invalidOption = invalidOption ?? arg;
 			}
@@ -294,16 +281,11 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 		}
 	}
 
-	if (localUser && !local) {
-		conflictingOptions = conflictingOptions ?? "--user can only be used with --local";
-	}
-
 	return {
 		command,
 		source,
 		updateTarget,
 		local,
-		localUser,
 		force,
 		help,
 		invalidOption,
@@ -525,15 +507,12 @@ export async function handlePackageCommand(
 	try {
 		switch (options.command) {
 			case "install":
-				await packageManager.installAndPersist(source!, { local: options.local, localUser: options.localUser });
+				await packageManager.installAndPersist(source!, { local: options.local });
 				console.log(chalk.green(`Installed ${source}`));
 				return true;
 
 			case "remove": {
-				const removed = await packageManager.removeAndPersist(source!, {
-					local: options.local,
-					localUser: options.localUser,
-				});
+				const removed = await packageManager.removeAndPersist(source!, { local: options.local });
 				if (!removed) {
 					console.error(chalk.red(`No matching package found for ${source}`));
 					process.exitCode = 1;
@@ -547,7 +526,6 @@ export async function handlePackageCommand(
 				const configuredPackages = packageManager.listConfiguredPackages();
 				const userPackages = configuredPackages.filter((pkg) => pkg.scope === "user");
 				const projectPackages = configuredPackages.filter((pkg) => pkg.scope === "project");
-				const projectUserPackages = configuredPackages.filter((pkg) => pkg.scope === "projectUser");
 
 				if (configuredPackages.length === 0) {
 					console.log(chalk.dim("No packages installed."));
@@ -573,14 +551,6 @@ export async function handlePackageCommand(
 					if (userPackages.length > 0) console.log();
 					console.log(chalk.bold("Project packages:"));
 					for (const pkg of projectPackages) {
-						formatPackage(pkg);
-					}
-				}
-
-				if (projectUserPackages.length > 0) {
-					if (userPackages.length > 0 || projectPackages.length > 0) console.log();
-					console.log(chalk.bold("Project user packages:"));
-					for (const pkg of projectUserPackages) {
 						formatPackage(pkg);
 					}
 				}

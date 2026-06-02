@@ -15,7 +15,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
-import { CONFIG_DIR_NAME, PROJECT_USER_CONFIG_DIR_NAME } from "../../../config.ts";
+import { CONFIG_DIR_NAME } from "../../../config.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../../../core/package-manager.ts";
 import type { PackageSource, SettingsManager } from "../../../core/settings-manager.ts";
 import { theme } from "../theme/theme.ts";
@@ -50,7 +50,7 @@ interface ResourceSubgroup {
 interface ResourceGroup {
 	key: string;
 	label: string;
-	scope: PathMetadata["scope"];
+	scope: "user" | "project" | "temporary";
 	origin: "package" | "top-level";
 	source: string;
 	subgroups: ResourceSubgroup[];
@@ -75,29 +75,18 @@ function formatBaseDir(baseDir: string): string {
 
 function getGroupLabel(metadata: PathMetadata): string {
 	if (metadata.origin === "package") {
-		return `${metadata.source} (${metadata.scope === "projectUser" ? "project user" : metadata.scope})`;
+		return `${metadata.source} (${metadata.scope})`;
 	}
 	// Top-level resources
 	if (metadata.source === "auto") {
 		if (metadata.baseDir) {
-			if (metadata.scope === "user") {
-				return `User (${formatBaseDir(metadata.baseDir)})`;
-			}
-			return metadata.scope === "projectUser"
-				? `Project user (${formatBaseDir(metadata.baseDir)})`
+			return metadata.scope === "user"
+				? `User (${formatBaseDir(metadata.baseDir)})`
 				: `Project (${formatBaseDir(metadata.baseDir)})`;
 		}
-		return metadata.scope === "user"
-			? "User (~/.pi/agent/)"
-			: metadata.scope === "projectUser"
-				? "Project user (.pi.user/)"
-				: "Project (.pi/)";
+		return metadata.scope === "user" ? "User (~/.pi/agent/)" : "Project (.pi/)";
 	}
-	return metadata.scope === "user"
-		? "User settings"
-		: metadata.scope === "projectUser"
-			? "Project user settings"
-			: "Project settings";
+	return metadata.scope === "user" ? "User settings" : "Project settings";
 }
 
 function buildGroups(resolved: ResolvedPaths): ResourceGroup[] {
@@ -159,15 +148,14 @@ function buildGroups(resolved: ResolvedPaths): ResourceGroup[] {
 	addToGroup(resolved.prompts, "prompts");
 	addToGroup(resolved.themes, "themes");
 
-	// Sort groups: packages first, then top-level; user before project.
-	const scopeOrder: Record<PathMetadata["scope"], number> = { user: 0, projectUser: 1, project: 2, temporary: 3 };
+	// Sort groups: packages first, then top-level; user before project
 	const groups = Array.from(groupMap.values());
 	groups.sort((a, b) => {
 		if (a.origin !== b.origin) {
 			return a.origin === "package" ? -1 : 1;
 		}
 		if (a.scope !== b.scope) {
-			return scopeOrder[a.scope] - scopeOrder[b.scope];
+			return a.scope === "user" ? -1 : 1;
 		}
 		return a.source.localeCompare(b.source);
 	});
@@ -466,27 +454,10 @@ class ResourceList implements Component, Focusable {
 		}
 	}
 
-	private getSettingsScope(item: ResourceItem): "user" | "project" | "projectUser" {
-		return item.metadata.scope === "projectUser"
-			? "projectUser"
-			: item.metadata.scope === "project"
-				? "project"
-				: "user";
-	}
-
-	private getSettingsForScope(scope: "user" | "project" | "projectUser") {
-		if (scope === "projectUser") {
-			return this.settingsManager.getProjectUserSettings();
-		}
-		if (scope === "project") {
-			return this.settingsManager.getProjectSettings();
-		}
-		return this.settingsManager.getGlobalSettings();
-	}
-
 	private toggleTopLevelResource(item: ResourceItem, enabled: boolean): void {
-		const scope = this.getSettingsScope(item);
-		const settings = this.getSettingsForScope(scope);
+		const scope = item.metadata.scope as "user" | "project";
+		const settings =
+			scope === "project" ? this.settingsManager.getProjectSettings() : this.settingsManager.getGlobalSettings();
 
 		const arrayKey = item.resourceType as "extensions" | "skills" | "prompts" | "themes";
 		const current = (settings[arrayKey] ?? []) as string[];
@@ -508,17 +479,7 @@ class ResourceList implements Component, Focusable {
 			updated.push(disablePattern);
 		}
 
-		if (scope === "projectUser") {
-			if (arrayKey === "extensions") {
-				this.settingsManager.setProjectUserExtensionPaths(updated);
-			} else if (arrayKey === "skills") {
-				this.settingsManager.setProjectUserSkillPaths(updated);
-			} else if (arrayKey === "prompts") {
-				this.settingsManager.setProjectUserPromptTemplatePaths(updated);
-			} else if (arrayKey === "themes") {
-				this.settingsManager.setProjectUserThemePaths(updated);
-			}
-		} else if (scope === "project") {
+		if (scope === "project") {
 			if (arrayKey === "extensions") {
 				this.settingsManager.setProjectExtensionPaths(updated);
 			} else if (arrayKey === "skills") {
@@ -542,8 +503,9 @@ class ResourceList implements Component, Focusable {
 	}
 
 	private togglePackageResource(item: ResourceItem, enabled: boolean): void {
-		const scope = this.getSettingsScope(item);
-		const settings = this.getSettingsForScope(scope);
+		const scope = item.metadata.scope as "user" | "project";
+		const settings =
+			scope === "project" ? this.settingsManager.getProjectSettings() : this.settingsManager.getGlobalSettings();
 
 		const packages = [...(settings.packages ?? [])] as PackageSource[];
 		const pkgIndex = packages.findIndex((pkg) => {
@@ -592,24 +554,19 @@ class ResourceList implements Component, Focusable {
 			packages[pkgIndex] = (pkg as { source: string }).source;
 		}
 
-		if (scope === "projectUser") {
-			this.settingsManager.setProjectUserPackages(packages);
-		} else if (scope === "project") {
+		if (scope === "project") {
 			this.settingsManager.setProjectPackages(packages);
 		} else {
 			this.settingsManager.setPackages(packages);
 		}
 	}
 
-	private getTopLevelBaseDir(scope: "user" | "project" | "projectUser"): string {
-		if (scope === "projectUser") {
-			return join(this.cwd, PROJECT_USER_CONFIG_DIR_NAME);
-		}
+	private getTopLevelBaseDir(scope: "user" | "project"): string {
 		return scope === "project" ? join(this.cwd, CONFIG_DIR_NAME) : this.agentDir;
 	}
 
 	private getResourcePattern(item: ResourceItem): string {
-		const scope = this.getSettingsScope(item);
+		const scope = item.metadata.scope as "user" | "project";
 		const baseDir = item.metadata.baseDir ?? this.getTopLevelBaseDir(scope);
 		return relative(baseDir, item.path);
 	}

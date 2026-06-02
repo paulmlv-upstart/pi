@@ -224,9 +224,9 @@ ${chalk.bold("Usage:")}
   ${APP_NAME} [options] [@files...] [messages...]
 
 ${chalk.bold("Commands:")}
-  ${APP_NAME} install <source> [-l] [-u]  Install extension source and add to settings
-  ${APP_NAME} remove <source> [-l] [-u]   Remove extension source from settings
-  ${APP_NAME} uninstall <source> [-l] [-u] Alias for remove
+  ${APP_NAME} install <source> [-l]     Install extension source and add to settings
+  ${APP_NAME} remove <source> [-l]      Remove extension source from settings
+  ${APP_NAME} uninstall <source> [-l]   Alias for remove
   ${APP_NAME} update [source|self|pi]   Update pi and installed extensions
   ${APP_NAME} list [--force]            List installed extensions from settings
   ${APP_NAME} config                    Open TUI to enable/disable package resources
@@ -269,7 +269,7 @@ ${chalk.bold("Options:")}
   --export <file>                Export session file to HTML and exit
   --list-models [search]         List available models (with optional fuzzy search)
   --verbose                      Force verbose startup (overrides quietStartup setting)
-  --force, -f                    Force loading project .pi and .pi.user config
+  --force, -f                    Force loading project .pi config
   --offline                      Disable startup network operations (same as PI_OFFLINE=1)
   --help, -h                     Show this help
   --version, -v                  Show version number

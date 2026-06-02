@@ -192,7 +192,7 @@ Type `/` in the editor to trigger commands. [Extensions](#extensions) can regist
 | `/export [file]` | Export session to HTML file |
 | `/share` | Upload as private GitHub gist with shareable HTML link |
 | `/reload` | Reload keybindings, extensions, skills, prompts, and context files (themes hot-reload automatically) |
-| `/trust [yes|no|reset]` | Configure whether `.pi` and `.pi.user` are trusted for this working directory |
+| `/trust [yes|no|reset]` | Configure whether `.pi` is trusted for this working directory |
 | `/hotkeys` | Show all keyboard shortcuts |
 | `/changelog` | Display version history |
 | `/quit` | Quit pi |
@@ -285,13 +285,12 @@ Use `/settings` to modify common options, or edit JSON files directly:
 |----------|-------|
 | `~/.pi/agent/settings.json` | Global (all projects) |
 | `.pi/settings.json` | Project (overrides global) |
-| `.pi.user/settings.json` | Project-local user overrides (ignored by Git when Pi creates it) |
 
 See [docs/settings.md](docs/settings.md) for all options.
 
 ### Project Trust
 
-Interactive startup asks before loading `.pi` or `.pi.user` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
+Interactive startup asks before loading `.pi` in a working directory whose trust has not been set. Decisions are stored in `~/.pi/agent/trust.json` by CWD: `true` loads project config, `false` skips it, and missing/null asks again. Use `/trust yes`, `/trust no`, `/trust reset`, or `/trust` to update the current CWD. Use `--force`/`-f` to load project config for one run regardless of trust.
 
 ### Telemetry and update checks
 
@@ -317,7 +316,7 @@ Disable context file loading with `--no-context-files` (or `-nc`).
 
 ### System Prompt
 
-Replace the default system prompt with `.pi.user/SYSTEM.md` (project-local user), `.pi/SYSTEM.md` (project), or `~/.pi/agent/SYSTEM.md` (global). Append without replacing via `APPEND_SYSTEM.md` in the same locations.
+Replace the default system prompt with `.pi/SYSTEM.md` (project) or `~/.pi/agent/SYSTEM.md` (global). Append without replacing via `APPEND_SYSTEM.md`.
 
 ---
 
@@ -333,7 +332,7 @@ Review this code for bugs, security issues, and performance problems.
 Focus on: {{focus}}
 ```
 
-Place in `~/.pi/agent/prompts/`, `.pi/prompts/`, `.pi.user/prompts/`, or a [pi package](#pi-packages) to share with others. See [docs/prompt-templates.md](docs/prompt-templates.md).
+Place in `~/.pi/agent/prompts/`, `.pi/prompts/`, or a [pi package](#pi-packages) to share with others. See [docs/prompt-templates.md](docs/prompt-templates.md).
 
 ### Skills
 
@@ -349,7 +348,7 @@ Use this skill when the user asks about X.
 2. Then that
 ```
 
-Place in `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, `.pi.user/skills/`, or `.agents/skills/` (from `cwd` up through parent directories) or a [pi package](#pi-packages) to share with others. See [docs/skills.md](docs/skills.md).
+Place in `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, or `.agents/skills/` (from `cwd` up through parent directories) or a [pi package](#pi-packages) to share with others. See [docs/skills.md](docs/skills.md).
 
 ### Extensions
 
@@ -381,13 +380,13 @@ The default export can also be `async`. pi waits for async extension factories b
 - Games while waiting (yes, Doom runs)
 - ...anything you can dream up
 
-Place in `~/.pi/agent/extensions/`, `.pi/extensions/`, `.pi.user/extensions/`, or a [pi package](#pi-packages) to share with others. See [docs/extensions.md](docs/extensions.md) and [examples/extensions/](examples/extensions/).
+Place in `~/.pi/agent/extensions/`, `.pi/extensions/`, or a [pi package](#pi-packages) to share with others. See [docs/extensions.md](docs/extensions.md) and [examples/extensions/](examples/extensions/).
 
 ### Themes
 
 Built-in: `dark`, `light`. Themes hot-reload: modify the active theme file and pi immediately applies changes.
 
-Place in `~/.pi/agent/themes/`, `.pi/themes/`, `.pi.user/themes/`, or a [pi package](#pi-packages) to share with others. See [docs/themes.md](docs/themes.md).
+Place in `~/.pi/agent/themes/`, `.pi/themes/`, or a [pi package](#pi-packages) to share with others. See [docs/themes.md](docs/themes.md).
 
 ### Pi Packages
 
@@ -417,7 +416,7 @@ pi update npm:@foo/pi-tools             # update one package
 pi config                               # enable/disable extensions, skills, prompts, themes
 ```
 
-Packages install to `~/.pi/agent/git/` (git) or `~/.pi/agent/npm/` (npm). Use `-l` for project-local installs (`.pi/git/`, `.pi/npm/`), or `-l -u` for ignored project-local user installs (`.pi.user/git/`, `.pi.user/npm/`). Git `@ref` values are pinned tags or commits; pinned packages are skipped by `pi update`, so use `pi install git:host/user/repo@new-ref` to move an existing package to a new ref. Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
+Packages install to `~/.pi/agent/git/` (git) or `~/.pi/agent/npm/` (npm). Use `-l` for project-local installs (`.pi/git/`, `.pi/npm/`). Git `@ref` values are pinned tags or commits; pinned packages are skipped by `pi update`, so use `pi install git:host/user/repo@new-ref` to move an existing package to a new ref. Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
 
 Create a package by adding a `pi` key to `package.json`:
 
@@ -505,9 +504,9 @@ pi [options] [@files...] [messages...]
 ### Package Commands
 
 ```bash
-pi install <source> [-l] [-u] # Install package, -l for project-local, -u for .pi.user with -l
-pi remove <source> [-l] [-u]  # Remove package
-pi uninstall <source> [-l] [-u] # Alias for remove
+pi install <source> [-l]     # Install package, -l for project-local
+pi remove <source> [-l]      # Remove package
+pi uninstall <source> [-l]   # Alias for remove
 pi update [source|self|pi]   # Update pi and packages (skips pinned packages)
 pi update --extensions       # Update packages only
 pi update --self             # Update pi only
@@ -590,7 +589,7 @@ Combine `--no-*` with explicit flags to load exactly what you need, ignoring set
 | `--system-prompt <text>` | Replace default prompt (context files and skills still appended) |
 | `--append-system-prompt <text>` | Append to system prompt |
 | `--verbose` | Force verbose startup |
-| `-f`, `--force` | Force loading project `.pi` and `.pi.user` config regardless of trust |
+| `-f`, `--force` | Force loading project `.pi` config regardless of trust |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
 
