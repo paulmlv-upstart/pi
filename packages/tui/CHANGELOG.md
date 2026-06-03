@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added terminal background color query support for OSC 11 replies.
+
 ### Fixed
 
 - Fixed WezTerm inline Kitty image rendering so reserved row clears do not erase all but the top strip of tool image previews ([#5618](https://github.com/earendil-works/pi/issues/5618)).
