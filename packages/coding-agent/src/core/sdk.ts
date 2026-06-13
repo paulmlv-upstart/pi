@@ -1,6 +1,15 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, type ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai";
+import {
+	type AssistantMessage,
+	type AssistantMessageEvent,
+	type AssistantMessageEventStream,
+	clampThinkingLevel,
+	createAssistantMessageEventStream,
+	type Message,
+	type Model,
+	streamSimple,
+} from "@earendil-works/pi-ai";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
@@ -11,6 +20,7 @@ import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefi
 import { convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import { findInitialModel } from "./model-resolver.ts";
+import { ModelRouter, type RouteDecision } from "./model-router.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
@@ -126,6 +136,71 @@ export {
 
 function getDefaultAgentDir(): string {
 	return getAgentDir();
+}
+
+function routeStatusText(route: RouteDecision): string {
+	return `Using ${route.model.provider}/${route.model.id} via ${route.routerId} for this task.`;
+}
+
+function routeDiagnostic(route: RouteDecision): NonNullable<AssistantMessage["diagnostics"]>[number] {
+	return {
+		type: "model_router",
+		timestamp: Date.now(),
+		details: {
+			router: route.routerId,
+			selected: `${route.model.provider}/${route.model.id}`,
+			selectorModel: `${route.selectorModel.provider}/${route.selectorModel.id}`,
+			reason: route.reason,
+			eligibleCandidates: route.candidates.length,
+			fallbackUsed: route.fallbackUsed,
+		},
+	};
+}
+
+function annotateRouteMessage(message: AssistantMessage, route: RouteDecision): AssistantMessage {
+	return {
+		...message,
+		diagnostics: [...(message.diagnostics ?? []), routeDiagnostic(route)],
+	};
+}
+
+function annotateRouteEvent(event: AssistantMessageEvent, route: RouteDecision): AssistantMessageEvent {
+	switch (event.type) {
+		case "status":
+			return event;
+		case "start":
+			return { ...event, partial: annotateRouteMessage(event.partial, route) };
+		case "text_start":
+		case "text_delta":
+		case "text_end":
+		case "thinking_start":
+		case "thinking_delta":
+		case "thinking_end":
+		case "toolcall_start":
+		case "toolcall_delta":
+		case "toolcall_end":
+			return { ...event, partial: annotateRouteMessage(event.partial, route) };
+		case "done":
+			return { ...event, message: annotateRouteMessage(event.message, route) };
+		case "error":
+			return { ...event, error: annotateRouteMessage(event.error, route) };
+	}
+}
+
+function withRouteStatusAndDiagnostics(
+	source: AssistantMessageEventStream,
+	route: RouteDecision,
+): AssistantMessageEventStream {
+	const stream = createAssistantMessageEventStream();
+
+	queueMicrotask(async () => {
+		stream.push({ type: "status", message: routeStatusText(route) });
+		for await (const event of source) {
+			stream.push(annotateRouteEvent(event, route));
+		}
+	});
+
+	return stream;
 }
 
 /**
@@ -289,6 +364,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	};
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const modelRouter = new ModelRouter(modelRegistry);
 
 	agent = new Agent({
 		initialState: {
@@ -299,7 +375,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		},
 		convertToLlm: convertToLlmWithBlockImages,
 		streamFn: async (model, context, options) => {
-			const auth = await modelRegistry.getApiKeyAndHeaders(model);
+			const route = await modelRouter.resolve({
+				requestedModel: model,
+				context,
+				streamOptions: options,
+			});
+			const targetModel = route?.model ?? model;
+			const auth = await modelRegistry.getApiKeyAndHeaders(targetModel);
 			if (!auth.ok) {
 				throw new Error(auth.error);
 			}
@@ -311,7 +393,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const timeoutMs = options?.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs;
 			const websocketConnectTimeoutMs =
 				options?.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs();
-			return streamSimple(model, context, {
+			const stream = streamSimple(targetModel, context, {
 				...options,
 				apiKey: auth.apiKey,
 				timeoutMs,
@@ -319,13 +401,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 				headers: mergeProviderAttributionHeaders(
-					model,
+					targetModel,
 					settingsManager,
 					options?.sessionId,
 					auth.headers,
 					options?.headers,
 				),
 			});
+			return route ? withRouteStatusAndDiagnostics(stream, route) : stream;
 		},
 		onPayload: async (payload, _model) => {
 			const runner = extensionRunnerRef.current;

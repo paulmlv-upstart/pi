@@ -62,6 +62,8 @@ export default function (pi: ExtensionAPI) {
 
 The extension factory can also be `async`. For dynamic model discovery, fetch and register models in the factory instead of `session_start`. pi waits for the factory before startup continues, so the provider is available during interactive startup and to `pi --list-models`.
 
+Model routers configured in `models.json` are not custom providers. A router is a selectable `router/<id>` alias that resolves to one concrete model before the provider request is built. Use `pi.registerProvider()` only when you need to add or override provider endpoints, auth, models, or streaming behavior.
+
 ## Override Existing Provider
 
 The simplest use case: redirect an existing provider through a proxy.

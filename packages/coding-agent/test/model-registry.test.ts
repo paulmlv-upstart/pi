@@ -75,6 +75,13 @@ describe("ModelRegistry", () => {
 		writeFileSync(modelsJsonPath, JSON.stringify({ providers }));
 	}
 
+	function writeRawModelsJsonConfig(config: {
+		providers: Record<string, unknown>;
+		routers?: Record<string, unknown>;
+	}) {
+		writeFileSync(modelsJsonPath, JSON.stringify(config));
+	}
+
 	const openAiModel: Model<Api> = {
 		id: "test-openai-model",
 		name: "Test OpenAI Model",
@@ -91,6 +98,124 @@ describe("ModelRegistry", () => {
 	const emptyContext: Context = {
 		messages: [],
 	};
+
+	describe("routers", () => {
+		test("parses top-level routers and exposes a synthetic router model", () => {
+			writeRawModelsJsonConfig({
+				providers: {
+					"route-targets": providerConfig("https://route.test/v1", [
+						{ id: "selector" },
+						{ id: "candidate-a" },
+						{ id: "candidate-b" },
+					]),
+				},
+				routers: {
+					"upstart-router": {
+						name: "Upstart Router",
+						selectorModel: "route-targets/selector",
+						candidates: ["route-targets/candidate-*"],
+						fallback: "route-targets/candidate-a",
+					},
+				},
+			});
+
+			const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+			const router = registry.find("router", "upstart-router");
+
+			expect(registry.getError()).toBeUndefined();
+			expect(registry.getRouterConfig("upstart-router")).toMatchObject({
+				name: "Upstart Router",
+				selectorModel: "route-targets/selector",
+			});
+			expect(router).toMatchObject({
+				provider: "router",
+				id: "upstart-router",
+				name: "Upstart Router",
+				api: "pi-router",
+				input: ["text"],
+			});
+			expect(registry.getAvailable()).toContain(router);
+		});
+
+		test("hides the router when no candidate has configured auth", () => {
+			const missingEnv = "PI_TEST_MISSING_ROUTER_AUTH";
+			const originalEnv = process.env[missingEnv];
+			delete process.env[missingEnv];
+
+			try {
+				writeRawModelsJsonConfig({
+					providers: {
+						"route-targets": {
+							...providerConfig("https://route.test/v1", [{ id: "selector" }, { id: "candidate-a" }]),
+							apiKey: `$${missingEnv}`,
+						},
+					},
+					routers: {
+						"upstart-router": {
+							selectorModel: "route-targets/selector",
+							candidates: ["route-targets/candidate-a"],
+						},
+					},
+				});
+
+				const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+				const router = registry.find("router", "upstart-router");
+
+				expect(router).toBeDefined();
+				expect(registry.getAvailable()).not.toContain(router);
+				expect(registry.getRouterCandidateStatus("upstart-router")).toEqual({
+					configuredCandidates: 1,
+					eligibleCandidates: 0,
+				});
+			} finally {
+				if (originalEnv === undefined) {
+					delete process.env[missingEnv];
+				} else {
+					process.env[missingEnv] = originalEnv;
+				}
+			}
+		});
+
+		test("rejects invalid router definitions", () => {
+			writeRawModelsJsonConfig({
+				providers: {},
+				routers: {
+					"upstart-router": {
+						selectorModel: "route-targets/selector",
+						candidates: [],
+					},
+				},
+			});
+
+			const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+
+			expect(registry.getError()).toContain("Invalid models.json schema");
+			expect(registry.find("router", "upstart-router")).toBeUndefined();
+		});
+
+		test("rejects selector models that resolve to another router", () => {
+			writeRawModelsJsonConfig({
+				providers: {
+					"route-targets": providerConfig("https://route.test/v1", [{ id: "candidate-a" }]),
+				},
+				routers: {
+					"selector-router": {
+						selectorModel: "router/upstart-router",
+						candidates: ["route-targets/candidate-a"],
+					},
+					"upstart-router": {
+						selectorModel: "route-targets/candidate-a",
+						candidates: ["route-targets/candidate-a"],
+					},
+				},
+			});
+
+			const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+
+			expect(registry.getError()).toContain("selectorModel must resolve to a concrete model");
+			expect(registry.find("router", "selector-router")).toBeUndefined();
+		});
+	});
 
 	describe("baseUrl override (no custom models)", () => {
 		test("overriding baseUrl keeps all built-in models", () => {

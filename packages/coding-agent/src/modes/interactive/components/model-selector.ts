@@ -9,7 +9,7 @@ import {
 	Text,
 	type TUI,
 } from "@earendil-works/pi-tui";
-import type { ModelRegistry } from "../../../core/model-registry.ts";
+import { isRouterModel, type ModelRegistry } from "../../../core/model-registry.ts";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -19,6 +19,7 @@ interface ModelItem {
 	provider: string;
 	id: string;
 	model: Model<any>;
+	details?: string;
 }
 
 interface ScopedModelItem {
@@ -153,6 +154,14 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				provider: model.provider,
 				id: model.id,
 				model,
+				details: isRouterModel(model)
+					? (() => {
+							const status = this.modelRegistry.getRouterCandidateStatus(model.id);
+							return status
+								? `Router Candidates: ${status.configuredCandidates} configured, ${status.eligibleCandidates} eligible`
+								: "Router";
+						})()
+					: undefined,
 			}));
 		} catch (error) {
 			this.allModels = [];
@@ -172,6 +181,14 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			provider: scoped.model.provider,
 			id: scoped.model.id,
 			model: scoped.model,
+			details: isRouterModel(scoped.model)
+				? (() => {
+						const status = this.modelRegistry.getRouterCandidateStatus(scoped.model.id);
+						return status
+							? `Router Candidates: ${status.configuredCandidates} configured, ${status.eligibleCandidates} eligible`
+							: "Router";
+					})()
+				: undefined,
 		}));
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
 		this.filteredModels = this.activeModels;
@@ -281,6 +298,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
 			this.listContainer.addChild(new Text(theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
+			if (selected.details) {
+				this.listContainer.addChild(new Text(theme.fg("muted", `  ${selected.details}`), 0, 0));
+			}
 		}
 	}
 

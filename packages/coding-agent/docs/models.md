@@ -9,6 +9,7 @@ Add custom providers and models (Ollama, vLLM, LM Studio, proxies) via `~/.pi/ag
 - [Supported APIs](#supported-apis)
 - [Provider Configuration](#provider-configuration)
 - [Model Configuration](#model-configuration)
+- [Model Routers](#model-routers)
 - [Overriding Built-in Providers](#overriding-built-in-providers)
 - [Per-model Overrides](#per-model-overrides)
 - [Anthropic Messages Compatibility](#anthropic-messages-compatibility)
@@ -211,6 +212,60 @@ If your command is slow, expensive, rate-limited, or should keep using a previou
 Current behavior:
 - `/model`, `--list-models`, and the interactive footer display entries by model `id`.
 - The configured `name` is used for model matching and secondary model detail text. It does not replace the footer/status-bar model id.
+
+## Model Routers
+
+Define top-level `routers` in `models.json` to expose a selectable model alias that chooses one concrete model per turn.
+
+```json
+{
+  "providers": {},
+  "routers": {
+    "upstart-router": {
+      "name": "Upstart Router",
+      "selectorModel": "openai/gpt-4.1-mini",
+      "candidates": [
+        "anthropic/claude-sonnet-4-5",
+        "openai/gpt-5.1-codex",
+        "openrouter/moonshotai/kimi-k2-thinking"
+      ],
+      "fallback": "anthropic/claude-sonnet-4-5"
+    }
+  }
+}
+```
+
+Routers appear as provider `router`, so they can be selected with `/model`, `--model upstart-router`, `--model router/upstart-router`, saved defaults, session restore, and `--list-models`.
+
+Router fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Display name shown in model details |
+| `selectorModel` | Yes | Concrete model used to choose the target. It must not be another router. |
+| `candidates` | Yes | Concrete model ids or model-scope patterns. Glob patterns match both `provider/modelId` and bare model ids. |
+| `fallback` | No | Concrete candidate used when selector output fails validation or the selector call fails. If omitted, pi uses the first eligible candidate. |
+
+Only candidates with configured auth are eligible. If no configured candidate is eligible, the request fails before streaming with a configuration error.
+
+The selector receives a compact text-only prompt containing the current user request, whether the task is new or a continuation, a rough context-size bucket, whether tools are enabled, and the candidate ids with brief model metadata. It does not receive full conversation history and does not receive tools. The selector must return JSON like:
+
+```json
+{
+  "model": "anthropic/claude-sonnet-4-5",
+  "reason": "large multi-file coding task"
+}
+```
+
+If the selector returns invalid JSON, names a non-candidate, or the selector request fails, pi uses the fallback. Routers do not retry a different target after provider rate limits, timeouts, 5xx errors, network errors, or partial streams.
+
+When a router selects a target, pi emits a status line such as:
+
+```text
+Using anthropic/claude-sonnet-4-5 via upstart-router for this task.
+```
+
+The assistant message records the concrete provider/model that answered. Router metadata is attached to assistant diagnostics with type `model_router`.
 
 ### Thinking Level Map
 

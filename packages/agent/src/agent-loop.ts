@@ -312,6 +312,10 @@ async function streamAssistantResponse(
 
 	for await (const event of response) {
 		switch (event.type) {
+			case "status":
+				await emit({ type: "status", message: event.message });
+				break;
+
 			case "start":
 				partialMessage = event.partial;
 				context.messages.push(partialMessage);

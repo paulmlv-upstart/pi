@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { registerOAuthProvider, resetOAuthProviders } from "@earendil-works/pi-ai/oauth";
 import { existsSync, readFileSync } from "fs";
+import { minimatch } from "minimatch";
 import { join } from "path";
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
@@ -29,6 +30,7 @@ import { warnDeprecation } from "../utils/deprecation.ts";
 import { stripJsonComments } from "../utils/json.ts";
 import { normalizePath } from "../utils/paths.ts";
 import type { AuthStatus, AuthStorage } from "./auth-storage.ts";
+import { parseModelPattern } from "./model-resolver.ts";
 import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "./provider-display-names.ts";
 import {
 	clearConfigValueCache,
@@ -40,6 +42,13 @@ import {
 	resolveConfigValueUncached,
 	resolveHeadersOrThrow,
 } from "./resolve-config-value.ts";
+
+export const ROUTER_PROVIDER = "router";
+export const ROUTER_API = "pi-router";
+
+export function isRouterModel(model: Model<Api>): boolean {
+	return model.provider === ROUTER_PROVIDER && model.api === ROUTER_API;
+}
 
 // Schema for OpenRouter routing preferences
 const PercentileCutoffsSchema = Type.Object({
@@ -204,13 +213,22 @@ const ProviderConfigSchema = Type.Object({
 	modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
 });
 
+const RouterConfigSchema = Type.Object({
+	name: Type.Optional(Type.String({ minLength: 1 })),
+	selectorModel: Type.String({ minLength: 1 }),
+	candidates: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+	fallback: Type.Optional(Type.String({ minLength: 1 })),
+});
+
 const ModelsConfigSchema = Type.Object({
 	providers: Type.Record(Type.String(), ProviderConfigSchema),
+	routers: Type.Optional(Type.Record(Type.String({ minLength: 1 }), RouterConfigSchema)),
 });
 
 const validateModelsConfig = Compile(ModelsConfigSchema);
 
 type ModelsConfig = Static<typeof ModelsConfigSchema>;
+export type RouterConfig = Static<typeof RouterConfigSchema>;
 
 function formatValidationPath(error: TLocalizedValidationError): string {
 	if (error.keyword === "required") {
@@ -322,6 +340,7 @@ export type ResolvedRequestAuth =
 /** Result of loading custom models from models.json */
 interface CustomModelsResult {
 	models: Model<Api>[];
+	routers: Map<string, RouterConfig>;
 	/** Providers with baseUrl/headers/apiKey overrides for built-in models */
 	overrides: Map<string, ProviderOverride>;
 	/** Per-model overrides: provider -> modelId -> override */
@@ -330,7 +349,7 @@ interface CustomModelsResult {
 }
 
 function emptyCustomModelsResult(error?: string): CustomModelsResult {
-	return { models: [], overrides: new Map(), modelOverrides: new Map(), error };
+	return { models: [], routers: new Map(), overrides: new Map(), modelOverrides: new Map(), error };
 }
 
 function mergeCompat(
@@ -397,6 +416,19 @@ function applyModelOverride(model: Model<Api>, override: ModelOverride): Model<A
 	return result;
 }
 
+const THINKING_LEVEL_SUFFIXES = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
+function hasGlobPattern(value: string): boolean {
+	return value.includes("*") || value.includes("?") || value.includes("[");
+}
+
+function stripThinkingLevelSuffix(pattern: string): string {
+	const colonIndex = pattern.lastIndexOf(":");
+	if (colonIndex === -1) return pattern;
+	const suffix = pattern.substring(colonIndex + 1);
+	return THINKING_LEVEL_SUFFIXES.has(suffix) ? pattern.substring(0, colonIndex) : pattern;
+}
+
 /** Clear the config value command cache. Exported for testing. */
 export const clearApiKeyCache = clearConfigValueCache;
 
@@ -405,6 +437,7 @@ export const clearApiKeyCache = clearConfigValueCache;
  */
 export class ModelRegistry {
 	private models: Model<Api>[] = [];
+	private routerConfigs: Map<string, RouterConfig> = new Map();
 	private providerRequestConfigs: Map<string, ProviderRequestConfig> = new Map();
 	private modelRequestHeaders: Map<string, Record<string, string>> = new Map();
 	private registeredProviders: Map<string, ProviderConfigInput> = new Map();
@@ -432,6 +465,7 @@ export class ModelRegistry {
 	refresh(): void {
 		this.providerRequestConfigs.clear();
 		this.modelRequestHeaders.clear();
+		this.routerConfigs.clear();
 		this.loadError = undefined;
 
 		// Ensure dynamic API/OAuth registrations are rebuilt from current provider state.
@@ -443,6 +477,7 @@ export class ModelRegistry {
 		for (const [providerName, config] of this.registeredProviders.entries()) {
 			this.applyProviderConfig(providerName, config);
 		}
+		this.rebuildRouterModels();
 	}
 
 	/**
@@ -456,10 +491,12 @@ export class ModelRegistry {
 		// Load custom models and overrides from models.json
 		const {
 			models: customModels,
+			routers,
 			overrides,
 			modelOverrides,
 			error,
 		} = this.modelsJsonPath ? this.loadCustomModels(this.modelsJsonPath) : emptyCustomModelsResult();
+		this.routerConfigs = routers;
 
 		if (error) {
 			this.loadError = error;
@@ -478,6 +515,7 @@ export class ModelRegistry {
 		}
 
 		this.models = combined;
+		this.rebuildRouterModels();
 	}
 
 	/** Load built-in models and apply provider/model overrides */
@@ -527,6 +565,60 @@ export class ModelRegistry {
 		return merged;
 	}
 
+	private expandRouterCandidates(config: RouterConfig, sourceModels: Model<Api>[]): Model<Api>[] {
+		const concreteModels = sourceModels.filter((model) => !isRouterModel(model));
+		const candidates: Model<Api>[] = [];
+
+		for (const candidatePattern of config.candidates) {
+			const pattern = stripThinkingLevelSuffix(candidatePattern);
+			const matches = hasGlobPattern(pattern)
+				? concreteModels.filter((model) => {
+						const fullId = `${model.provider}/${model.id}`;
+						return minimatch(fullId, pattern, { nocase: true }) || minimatch(model.id, pattern, { nocase: true });
+					})
+				: [parseModelPattern(candidatePattern, concreteModels).model].filter(
+						(model): model is Model<Api> => !!model,
+					);
+
+			for (const model of matches) {
+				if (!candidates.some((candidate) => candidate.provider === model.provider && candidate.id === model.id)) {
+					candidates.push(model);
+				}
+			}
+		}
+
+		return candidates;
+	}
+
+	private createRouterModels(concreteModels: Model<Api>[]): Model<Api>[] {
+		const routerModels: Model<Api>[] = [];
+
+		for (const [routerId, config] of this.routerConfigs.entries()) {
+			const candidates = this.expandRouterCandidates(config, concreteModels);
+			const input = Array.from(new Set(candidates.flatMap((candidate) => candidate.input)));
+			routerModels.push({
+				provider: ROUTER_PROVIDER,
+				id: routerId,
+				name: config.name ?? routerId,
+				api: ROUTER_API as Api,
+				baseUrl: "pi-router://local",
+				reasoning: false,
+				input: input.length > 0 ? (input as ("text" | "image")[]) : ["text"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow:
+					candidates.length > 0 ? Math.min(...candidates.map((candidate) => candidate.contextWindow)) : 128000,
+				maxTokens: candidates.length > 0 ? Math.min(...candidates.map((candidate) => candidate.maxTokens)) : 16384,
+			});
+		}
+
+		return routerModels;
+	}
+
+	private rebuildRouterModels(): void {
+		const concreteModels = this.models.filter((model) => !isRouterModel(model));
+		this.models = [...concreteModels, ...this.createRouterModels(concreteModels)];
+	}
+
 	private loadCustomModels(modelsJsonPath: string): CustomModelsResult {
 		if (!existsSync(modelsJsonPath)) {
 			return emptyCustomModelsResult();
@@ -571,7 +663,13 @@ export class ModelRegistry {
 				}
 			}
 
-			return { models: this.parseModels(config), overrides, modelOverrides, error: undefined };
+			return {
+				models: this.parseModels(config),
+				routers: new Map(Object.entries(config.routers ?? {})),
+				overrides,
+				modelOverrides,
+				error: undefined,
+			};
 		} catch (error) {
 			if (error instanceof SyntaxError) {
 				return emptyCustomModelsResult(`Failed to parse models.json: ${error.message}\n\nFile: ${modelsJsonPath}`);
@@ -584,6 +682,22 @@ export class ModelRegistry {
 
 	private validateConfig(config: ModelsConfig): void {
 		const builtInProviders = new Set<string>(getProviders());
+
+		for (const [routerId, routerConfig] of Object.entries(config.routers ?? {})) {
+			const selectorRouterId = routerConfig.selectorModel.startsWith(`${ROUTER_PROVIDER}/`)
+				? routerConfig.selectorModel.substring(`${ROUTER_PROVIDER}/`.length)
+				: routerConfig.selectorModel;
+			if (config.routers?.[selectorRouterId]) {
+				throw new Error(`Router ${routerId}: selectorModel must resolve to a concrete model, not a router.`);
+			}
+			for (const candidate of routerConfig.candidates) {
+				if (candidate === routerId || candidate === `${ROUTER_PROVIDER}/${routerId}`) {
+					throw new Error(
+						`Router ${routerId}: candidates must resolve to concrete models, not the router itself.`,
+					);
+				}
+			}
+		}
 
 		for (const [providerName, providerConfig] of Object.entries(config.providers)) {
 			const isBuiltIn = builtInProviders.has(providerName);
@@ -701,6 +815,22 @@ export class ModelRegistry {
 		return this.models.filter((m) => this.hasConfiguredAuth(m));
 	}
 
+	getRouterConfig(routerId: string): RouterConfig | undefined {
+		return this.routerConfigs.get(routerId);
+	}
+
+	getRouterCandidateStatus(
+		routerId: string,
+	): { configuredCandidates: number; eligibleCandidates: number } | undefined {
+		const config = this.routerConfigs.get(routerId);
+		if (!config) return undefined;
+		const candidates = this.expandRouterCandidates(config, this.models);
+		return {
+			configuredCandidates: config.candidates.length,
+			eligibleCandidates: candidates.filter((candidate) => this.hasConfiguredAuth(candidate)).length,
+		};
+	}
+
 	/**
 	 * Find a model by provider and ID.
 	 */
@@ -712,6 +842,10 @@ export class ModelRegistry {
 	 * Get API key for a model.
 	 */
 	hasConfiguredAuth(model: Model<Api>): boolean {
+		if (isRouterModel(model)) {
+			return (this.getRouterCandidateStatus(model.id)?.eligibleCandidates ?? 0) > 0;
+		}
+
 		const providerApiKey = this.providerRequestConfigs.get(model.provider)?.apiKey;
 		return (
 			this.authStorage.hasAuth(model.provider) ||
@@ -755,6 +889,10 @@ export class ModelRegistry {
 	 * Get API key and request headers for a model.
 	 */
 	async getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth> {
+		if (isRouterModel(model)) {
+			return { ok: false, error: `Router model "${model.id}" must resolve to a concrete model before auth.` };
+		}
+
 		try {
 			const providerConfig = this.providerRequestConfigs.get(model.provider);
 			const apiKeyFromAuthStorage = await this.authStorage.getApiKey(model.provider, { includeFallback: false });
@@ -828,6 +966,10 @@ export class ModelRegistry {
 	 * Get display name for a provider.
 	 */
 	getProviderDisplayName(provider: string): string {
+		if (provider === ROUTER_PROVIDER) {
+			return "Router";
+		}
+
 		const registeredProvider = this.registeredProviders.get(provider);
 		const oauthProvider = this.authStorage.getOAuthProviders().find((p) => p.id === provider);
 
@@ -873,6 +1015,7 @@ export class ModelRegistry {
 		this.validateProviderConfig(providerName, migratedConfig);
 		this.applyProviderConfig(providerName, migratedConfig);
 		this.upsertRegisteredProvider(providerName, migratedConfig);
+		this.rebuildRouterModels();
 	}
 
 	/**
